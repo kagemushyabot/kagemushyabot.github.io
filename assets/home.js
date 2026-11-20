@@ -136,3 +136,22 @@
     }
   });
 })();
+
+/* hover previews: desktop pointer only, loaded lazily on first hover */
+(function () {
+  if (!window.matchMedia || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  Array.prototype.forEach.call(document.querySelectorAll('.tile .pv'), function (v) {
+    var tile = v.closest('.tile'), timer = 0, hot = false;
+    v.addEventListener('playing', function () { if (hot) tile.classList.add('is-pv'); });
+    tile.addEventListener('mouseenter', function () {
+      hot = true; clearTimeout(timer);
+      if (!v.getAttribute('src')) { v.setAttribute('src', v.getAttribute('data-src')); v.preload = 'auto'; }
+      var p = v.play(); if (p && p.catch) p.catch(function () {});
+    });
+    tile.addEventListener('mouseleave', function () {
+      hot = false; tile.classList.remove('is-pv');
+      timer = setTimeout(function () { if (!hot) { v.pause(); try { v.currentTime = 0; } catch (e) {} } }, 450);
+    });
+  });
+})();

@@ -38,10 +38,25 @@ body.is-home main{max-width:none;padding:0}
 .feat .cap{padding:20px 24px}.feat .cap b{font-family:var(--font-display);font-size:1.5rem;font-weight:500;letter-spacing:.01em}.feat .meta{font-size:.8125rem;max-width:640px}
 .studio .cap b{font-size:.9375rem}
 .studio.feat .cap b{font-size:1.5rem}
-.about{display:grid;grid-template-columns:1fr 1.4fr;gap:48px;padding:80px 0 72px;width:calc(100% - 2*var(--pad));max-width:72rem;margin:0 auto}
-.about h3{font-family:var(--font-display);font-size:.75rem;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 .5rem}
-.about p{color:var(--text-muted);font-size:.875rem;margin:0}
-.about a{display:inline-block;margin-top:.75rem;font-size:.75rem;letter-spacing:.14em;text-transform:uppercase}
+/* studio tiles: description overlaid on the image */
+.tile.has-desc::after{background:linear-gradient(to top,rgba(0,0,0,.9) 0,rgba(0,0,0,.78) 34%,rgba(0,0,0,.35) 62%,rgba(0,0,0,0) 85%)}
+.desc{display:block;margin-top:6px;color:#e6e2da;font-size:.75rem;line-height:1.5;text-shadow:0 1px 6px rgba(0,0,0,.7);max-width:46rem}
+.tile.feat .desc{font-size:.9375rem;line-height:1.55;margin-top:8px}
+/* hover preview clips (desktop pointer only; JS loads them on first hover) */
+.pv{position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;opacity:0;transition:opacity .4s ease,transform .6s;pointer-events:none;background:#000}
+.tile.is-pv .pv{opacity:1}
+.tile:hover .pv{transform:scale(1.045)}
+@media (prefers-reduced-motion:reduce){.pv{display:none}}
+/* contact strip under the grid */
+.contact{width:calc(100% - 2*var(--pad));max-width:calc(var(--maxw) - 2*var(--pad));margin:0 auto;padding:64px 0 80px;display:flex;align-items:baseline;gap:12px 18px;flex-wrap:wrap}
+.contact h2{font-family:var(--font-display);font-size:.75rem;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0;flex:none}
+.contact ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;align-items:center;gap:10px 0}
+.contact li{display:flex;align-items:center}
+.contact li+li::before{content:"|";color:var(--text-muted);margin:0 32px;font-size:1.1rem;line-height:1}
+.contact a{color:var(--text);font-size:1rem;letter-spacing:.01em;text-decoration:none;border-bottom:1px solid var(--border-strong);padding-bottom:2px;display:inline-flex;align-items:center;gap:.55rem;transition:color .2s,border-color .2s}
+.contact a:hover,.contact a:focus-visible{color:var(--accent);border-color:var(--accent)}
+.contact-mail{font-size:1.25rem!important}
+.contact svg{width:1.15em;height:1.15em;fill:currentColor;flex:none}
 /* project modal */
 .pm[hidden]{display:none}
 .pm{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:1rem}
@@ -87,6 +102,9 @@ body.pm-open{overflow:hidden}
  .tile[data-wide]{width:100%;aspect-ratio:16/9}
  .feat .cap b{font-size:1.1rem}.feat .cap{padding:14px}.feat .meta{font-size:.6875rem}
  .cap{padding:8px 9px}.cap b{font-size:.72rem}.meta{display:none}.feat .meta{display:block}
- .about{grid-template-columns:1fr;gap:28px;padding:48px 0 40px}
+ .desc,.tile.feat .desc{font-size:.7rem;line-height:1.45;margin-top:4px}
+ .tile.has-desc{aspect-ratio:4/3}.tile.has-desc.feat{aspect-ratio:1/1}
+ .tile.has-desc .cap{padding:10px 12px}
+ .contact{padding:40px 0 48px;gap:8px 14px}.contact li+li::before{margin:0 16px}.contact li:first-child{width:100%}.contact li:nth-child(2)::before{display:none}.contact ul{gap:12px 0}.contact a{font-size:.875rem}.contact-mail{font-size:.9375rem!important}
  .pm{padding:0}.pm-dialog{max-height:100vh;height:100%}.pm-nav{display:none}.pm-thumbs button{width:96px;height:54px}
 }
