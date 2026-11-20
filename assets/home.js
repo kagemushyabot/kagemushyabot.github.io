@@ -20,7 +20,7 @@
   function fmt(s) { s = Math.round(s); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
   if (video) {
     video.addEventListener('loadedmetadata', function () { if (durEl && isFinite(video.duration)) durEl.textContent = fmt(video.duration); });
-    var start = function () { video.controls = true; vwrap.classList.add('is-playing'); var p = video.play(); if (p && p.catch) p.catch(function () {}); };
+    var start = function () { video.muted = true; video.controls = true; vwrap.classList.add('is-playing'); var p = video.play(); if (p && p.catch) p.catch(function () {}); };
     playBtn.addEventListener('click', start);
     video.addEventListener('click', function () { if (!video.controls) start(); });
   }
@@ -72,7 +72,7 @@
     stageEl.innerHTML = '';
     if (m.t === 'yt') {
       var f = document.createElement('iframe');
-      f.src = 'https://www.youtube.com/embed/' + encodeURIComponent(m.id) + '?autoplay=1&rel=0';
+      f.src = 'https://www.youtube.com/embed/' + encodeURIComponent(m.id) + '?autoplay=1&mute=1&rel=0';
       f.title = cur.title + ' — video';
       f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
       f.allowFullscreen = true;
@@ -147,7 +147,7 @@
     tile.addEventListener('mouseenter', function () {
       hot = true; clearTimeout(timer);
       if (!v.getAttribute('src')) { v.setAttribute('src', v.getAttribute('data-src')); v.preload = 'auto'; }
-      var p = v.play(); if (p && p.catch) p.catch(function () {});
+      v.muted = true; var p = v.play(); if (p && p.catch) p.catch(function () {});
     });
     tile.addEventListener('mouseleave', function () {
       hot = false; tile.classList.remove('is-pv');

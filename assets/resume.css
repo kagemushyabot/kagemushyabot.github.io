@@ -19,3 +19,13 @@
  body.is-resume .resume-job .dates{letter-spacing:.1em;font-size:.75rem;text-transform:uppercase}
  body.is-resume .resume-accent-name,body.is-resume .resume-accent-nomination{font-size:inherit}
 }
+
+/* Earlier Experience: compact one line per role */
+body.is-resume .resume-compact{list-style:none;margin:0;padding:0}
+body.is-resume .resume-compact li{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;padding:.7rem 0;border-bottom:1px solid var(--border);font-size:.9375rem;line-height:1.45}
+body.is-resume .resume-compact li:last-child{border-bottom:0}
+body.is-resume .rc-main strong{font-family:var(--font-display);font-weight:600;letter-spacing:.02em;font-size:1.0625rem}
+body.is-resume .rc-sep{color:var(--text-muted)}
+body.is-resume .rc-loc{color:var(--text-secondary)}
+body.is-resume .rc-dates{flex:none;letter-spacing:.1em;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);white-space:nowrap}
+@media (max-width:600px){body.is-resume .resume-compact li{flex-direction:column;gap:.15rem}}
