@@ -13,14 +13,20 @@
   var INTRO_KEY = 'seasonIntroSeen';
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var canvas, ctx, raf = 0, flakes = [], sprites = [];
+  var canvas, ctx, raf = 0, flakes = [], sprites = [], shardSprites = [];
   var cssW = 0, cssH = 0, dpr = 1;
   var siteElapsed = 0, last = 0, spawning = true, cleaned = false;
   var siteClockStarted = false;
   var introEl = null, introActive = false, introLeaving = false;
   var introPage = 0;
   var introTimers = [];
-  var onResize, onVis, onSkip;
+  var onResize, onVis, onSkip, onPointer;
+  var bursts = [];
+  var ignoreIntroSkip = false;
+  var ignoreIntroSkipTimer = 0;
+  var BURST_SHARD_CAP = 80;
+  var SHARD_GRAVITY = 420;
+  var snowDebug = /[?&]snowdebug(?:&|=|$)/.test(location.search);
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
@@ -233,40 +239,119 @@
     return c;
   }
 
+  function makeDiamondShard() {
+    var s = 48;
+    var c = document.createElement('canvas');
+    c.width = c.height = s;
+    var g = c.getContext('2d');
+    paintCrystal(g, s / 2, s / 2, function (g) {
+      g.beginPath();
+      g.moveTo(18, 0);
+      g.lineTo(4, -8);
+      g.lineTo(-18, 0);
+      g.lineTo(4, 8);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    });
+    return c;
+  }
+
+  function makeSparkleSprite() {
+    var s = 48;
+    var c = document.createElement('canvas');
+    c.width = c.height = s;
+    var g = c.getContext('2d');
+    paintCrystal(g, s / 2, s / 2, function (g) {
+      var i, len;
+      for (i = 0; i < 4; i++) {
+        g.save();
+        g.rotate(i * Math.PI / 2);
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(16, 0);
+        g.moveTo(7, -3.5);
+        g.lineTo(16, 0);
+        g.lineTo(7, 3.5);
+        g.stroke();
+        g.restore();
+      }
+      hexPath(g, 3.2, 0);
+      g.fill();
+      g.stroke();
+    });
+    return c;
+  }
+
+  function makeChipSprite() {
+    var s = 48;
+    var c = document.createElement('canvas');
+    c.width = c.height = s;
+    var g = c.getContext('2d');
+    paintCrystal(g, s / 2, s / 2, function (g) {
+      g.beginPath();
+      g.moveTo(14, -3);
+      g.lineTo(2, -11);
+      g.lineTo(-15, 1);
+      g.lineTo(-4, 10);
+      g.lineTo(10, 7);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    });
+    return c;
+  }
+
+  // Small crystals keep the current v3 speed. Mid/large scale up with size
+  // so nearer (bigger) flakes fall faster for a parallax/depth feel.
+  function smallFlakeSpeed() {
+    return (22 + Math.random() * 20) * 1.75;
+  }
+
+  function speedScaleForSize(size) {
+    if (size >= 36) return 1.8 + Math.min(1, (size - 36) / 20) * 0.7;
+    if (size >= 18) return 1 + ((size - 18) / 18) * 0.8;
+    return 1;
+  }
+
   function makeFlake(anywhere) {
     var roll = Math.random();
-    var size, vy, alpha, sprite, spin;
+    var size, vy, alpha, sprite, spin, amp;
     if (roll < 0.16) {
       sprite = 3;
       size = 3.4 + Math.random() * 3.6;
       vy = (30 + Math.random() * 34) * 1.75;
       alpha = 0.55 + Math.random() * 0.35;
       spin = 0;
+      amp = 6 + Math.random() * 20;
     } else if (roll < 0.54) {
       sprite = (Math.random() * 3) | 0;
       size = 10 + Math.random() * 8;
       vy = (22 + Math.random() * 20) * 1.75;
       alpha = 0.78 + Math.random() * 0.2;
       spin = (Math.random() < 0.5 ? -1 : 1) * (0.18 + Math.random() * 0.35);
+      amp = 6 + Math.random() * 20;
     } else if (roll < 0.88) {
       sprite = (Math.random() * 3) | 0;
       size = 20 + Math.random() * 10;
-      vy = (15 + Math.random() * 14) * 1.75;
-      alpha = 0.82 + Math.random() * 0.16;
+      vy = smallFlakeSpeed() * speedScaleForSize(size);
+      alpha = 0.86 + Math.random() * 0.13;
       spin = (Math.random() < 0.5 ? -1 : 1) * (0.1 + Math.random() * 0.22);
+      amp = 8 + Math.random() * 24;
     } else {
       sprite = (Math.random() * 3) | 0;
       size = 36 + Math.random() * 20;
-      vy = (9 + Math.random() * 9) * 1.75;
-      alpha = 0.88 + Math.random() * 0.12;
+      vy = smallFlakeSpeed() * speedScaleForSize(size);
+      alpha = 0.92 + Math.random() * 0.08;
       spin = (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.1);
+      amp = 12 + Math.random() * 28;
     }
     return {
       baseX: Math.random() * cssW,
       y: anywhere ? Math.random() * cssH : -size - Math.random() * 50,
       size: size,
       vy: vy,
-      amp: 6 + Math.random() * 20,
+      amp: amp,
       freq: 0.5 + Math.random() * 1.2,
       phase: Math.random() * Math.PI * 2,
       alpha: alpha,
@@ -275,6 +360,14 @@
       spin: spin,
       alive: true
     };
+  }
+
+  function applyLargeMotion(f) {
+    f.size = 36 + Math.random() * 20;
+    f.vy = smallFlakeSpeed() * speedScaleForSize(f.size);
+    f.alpha = 0.92 + Math.random() * 0.08;
+    f.spin = (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.1);
+    f.amp = 12 + Math.random() * 28;
   }
 
   function ensureLargeFlakes(want) {
@@ -286,10 +379,7 @@
     for (i = 0; i < flakes.length && large < need; i++) {
       if (flakes[i].size < 36 && flakes[i].sprite !== 3) {
         flakes[i].sprite = (Math.random() * 3) | 0;
-        flakes[i].size = 36 + Math.random() * 20;
-        flakes[i].vy = (9 + Math.random() * 9) * 1.75;
-        flakes[i].alpha = 0.88 + Math.random() * 0.12;
-        flakes[i].spin = (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.1);
+        applyLargeMotion(flakes[i]);
         large++;
       }
     }
@@ -319,6 +409,184 @@
     while (flakes.length < want) flakes.push(makeFlake(true));
     if (flakes.length > want) flakes.length = want;
     ensureLargeFlakes(want);
+  }
+
+  function flakeDrawnX(f, tSec) {
+    if (f.drawX != null) return f.drawX;
+    return f.baseX + Math.sin(tSec * f.freq + f.phase) * f.amp;
+  }
+
+  function shardCount() {
+    var n = 0, i;
+    for (i = 0; i < bursts.length; i++) n += bursts[i].shards.length;
+    return n;
+  }
+
+  function spawnBurst(x, y, flakeSize) {
+    var n = 8 + ((Math.random() * 7) | 0);
+    var room = BURST_SHARD_CAP - shardCount();
+    if (room <= 0) n = 0;
+    else if (n > room) n = room;
+    var shards = [];
+    var i, ang, spd, spr, size0;
+    for (i = 0; i < n; i++) {
+      ang = (i / Math.max(n, 1)) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
+      spd = 180 + Math.random() * 260;
+      spr = (Math.random() * shardSprites.length) | 0;
+      size0 = Math.max(7, Math.min(20, 7 + flakeSize * 0.22 + Math.random() * 6));
+      shards.push({
+        x: x,
+        y: y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 50,
+        rot: Math.random() * Math.PI * 2,
+        spin: (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 9),
+        size0: size0,
+        life: 0.5 + Math.random() * 0.2,
+        age: 0,
+        sprite: spr,
+        alpha: 0.85 + Math.random() * 0.15
+      });
+    }
+    bursts.push({
+      x: x,
+      y: y,
+      age: 0,
+      life: 0.62,
+      ringLife: 0.34,
+      ringMax: 40 + flakeSize * 1.15,
+      shards: shards
+    });
+  }
+
+  function burstFlake(f, now) {
+    if (!f || !f.alive) return false;
+    var tSec = (now || last || performance.now()) / 1000;
+    var x = flakeDrawnX(f, tSec);
+    var y = f.y;
+    f.alive = false;
+    f.respawnAt = (now || performance.now()) + 450 + Math.random() * 400;
+    spawnBurst(x, y, f.size || 16);
+    return true;
+  }
+
+  function hitTestFlake(px, py) {
+    var tSec = (last || performance.now()) / 1000;
+    var best = null, bestD = Infinity, i, f, x, y, r, dx, dy, d;
+    for (i = 0; i < flakes.length; i++) {
+      f = flakes[i];
+      if (!f.alive) continue;
+      x = flakeDrawnX(f, tSec);
+      y = f.y;
+      r = Math.max((f.size / 2) * 1.3, 18);
+      dx = px - x;
+      dy = py - y;
+      d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= r && d < bestD) {
+        bestD = d;
+        best = f;
+      }
+    }
+    return best;
+  }
+
+  function burstAt(px, py) {
+    var f = hitTestFlake(px, py);
+    if (!f) return false;
+    return burstFlake(f, performance.now());
+  }
+
+  function markIgnoreIntroSkip() {
+    ignoreIntroSkip = true;
+    if (ignoreIntroSkipTimer) clearTimeout(ignoreIntroSkipTimer);
+    ignoreIntroSkipTimer = setTimeout(function () {
+      ignoreIntroSkip = false;
+      ignoreIntroSkipTimer = 0;
+    }, 500);
+  }
+
+  function pointerXY(e) {
+    if (e.clientX != null && e.clientY != null && !(e.touches && e.touches.length)) {
+      return { x: e.clientX, y: e.clientY };
+    }
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    if (e.changedTouches && e.changedTouches[0]) {
+      return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+    return null;
+  }
+
+  function onPointerDown(e) {
+    if (cleaned || !canvas) return;
+    if (e.pointerType === 'mouse' && e.button != null && e.button !== 0) return;
+    var pt = pointerXY(e);
+    if (!pt) return;
+    if (burstAt(pt.x, pt.y)) markIgnoreIntroSkip();
+  }
+
+  function updateBursts(dt) {
+    var i, b, j, s, k, size, alpha, spr, half;
+    for (i = bursts.length - 1; i >= 0; i--) {
+      b = bursts[i];
+      b.age += dt;
+      for (j = b.shards.length - 1; j >= 0; j--) {
+        s = b.shards[j];
+        s.age += dt;
+        if (s.age >= s.life) {
+          b.shards.splice(j, 1);
+          continue;
+        }
+        s.vy += SHARD_GRAVITY * dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.rot += s.spin * dt;
+      }
+      if (b.age >= b.life && !b.shards.length) bursts.splice(i, 1);
+    }
+  }
+
+  function drawBursts(ctx) {
+    var i, b, j, s, k, ringT, rad, alpha, spr, half, flash;
+    for (i = 0; i < bursts.length; i++) {
+      b = bursts[i];
+      ringT = Math.min(1, b.age / b.ringLife);
+      if (ringT < 1) {
+        rad = 10 + ringT * b.ringMax;
+        alpha = (1 - ringT) * 0.95;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, rad, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(210, 235, 255, 1)';
+        ctx.lineWidth = 3.4 * (1 - ringT) + 1.2;
+        ctx.stroke();
+        flash = (1 - ringT) * 0.55;
+        if (flash > 0.02) {
+          ctx.globalAlpha = flash;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, 8 + ringT * 18, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+      for (j = 0; j < b.shards.length; j++) {
+        s = b.shards[j];
+        k = s.age / s.life;
+        size = s.size0 * (1 - k * 0.85);
+        alpha = s.alpha * (1 - k * k);
+        spr = shardSprites[s.sprite];
+        if (!spr || size < 0.4 || alpha < 0.02) continue;
+        half = size / 2;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.rot);
+        ctx.drawImage(spr, -half, -half, size, size);
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   function startSiteClock() {
@@ -358,12 +626,36 @@
     var t = now / 1000;
     ctx.clearRect(0, 0, cssW, cssH);
 
+    updateBursts(dt);
+
     for (var i = 0; i < flakes.length; i++) {
       var f = flakes[i];
-      if (!f.alive) continue;
+      if (!f.alive) {
+        if (f.respawnAt && now >= f.respawnAt) {
+          f.respawnAt = 0;
+          if (spawning) {
+            var born = makeFlake(false);
+            f.baseX = born.baseX;
+            f.y = born.y;
+            f.size = born.size;
+            f.vy = born.vy;
+            f.amp = born.amp;
+            f.freq = born.freq;
+            f.phase = born.phase;
+            f.alpha = born.alpha;
+            f.sprite = born.sprite;
+            f.rot = born.rot;
+            f.spin = born.spin;
+            f.alive = true;
+            f.drawX = f.baseX;
+          }
+        }
+        continue;
+      }
       f.y += f.vy * dt;
       f.rot += f.spin * dt;
       var x = f.baseX + Math.sin(t * f.freq + f.phase) * f.amp;
+      f.drawX = x;
       var half = f.size / 2;
 
       if (f.y - half > cssH + 8) {
@@ -395,6 +687,7 @@
       ctx.drawImage(spr, -half, -half, f.size, f.size);
       ctx.restore();
     }
+    drawBursts(ctx);
     ctx.globalAlpha = 1;
   }
 
@@ -407,10 +700,20 @@
     }
     window.removeEventListener('resize', onResize);
     document.removeEventListener('visibilitychange', onVis);
+    if (onPointer) {
+      document.removeEventListener('pointerdown', onPointer, true);
+      document.removeEventListener('mousedown', onPointer, true);
+      document.removeEventListener('touchstart', onPointer, true);
+    }
+    if (ignoreIntroSkipTimer) {
+      clearTimeout(ignoreIntroSkipTimer);
+      ignoreIntroSkipTimer = 0;
+    }
     if (canvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
     canvas = null;
     ctx = null;
     flakes = [];
+    bursts = [];
   }
 
   function injectFont() {
@@ -573,6 +876,7 @@
     onSkip = function (e) {
       if (!introActive || introLeaving) return;
       if (e && e.type === 'keydown' && e.key === 'Tab') return;
+      if (e && (e.type === 'click' || e.type === 'touchend') && ignoreIntroSkip) return;
       if (e && e.type === 'keydown') e.preventDefault();
       dismissIntro();
     };
@@ -631,18 +935,38 @@
       makeCrystalSprite(drawStellar),
       makeDotSprite()
     ];
+    shardSprites = [makeDiamondShard(), makeSparkleSprite(), makeChipSprite(), makeDotSprite()];
 
     onResize = resize;
     onVis = function () { last = performance.now(); };
+    onPointer = onPointerDown;
     window.addEventListener('resize', onResize, { passive: true });
     document.addEventListener('visibilitychange', onVis);
+    if (window.PointerEvent) {
+      document.addEventListener('pointerdown', onPointer, { passive: true, capture: true });
+    } else {
+      document.addEventListener('mousedown', onPointer, { passive: true, capture: true });
+      document.addEventListener('touchstart', onPointer, { passive: true, capture: true });
+    }
 
     resize();
     last = performance.now();
     raf = requestAnimationFrame(tick);
   }
 
+  function isReloadNavigation() {
+    try {
+      var entries = performance.getEntriesByType && performance.getEntriesByType('navigation');
+      if (entries && entries[0] && entries[0].type) return entries[0].type === 'reload';
+    } catch (e) {}
+    try {
+      if (performance.navigation && performance.navigation.type === 1) return true;
+    } catch (e2) {}
+    return false;
+  }
+
   function shouldShowIntro() {
+    if (isReloadNavigation()) return true;
     try {
       if (sessionStorage.getItem(INTRO_KEY) === '1') return false;
     } catch (e) {}
@@ -667,6 +991,31 @@
     isIntroLeaving: function () { return introLeaving; },
     getIntroPage: function () { return introPage; }
   };
+
+  if (snowDebug) {
+    window.SNOW.getFlakePositions = function () {
+      var tSec = (last || performance.now()) / 1000;
+      var out = [], i, f;
+      for (i = 0; i < flakes.length; i++) {
+        f = flakes[i];
+        if (!f.alive) continue;
+        out.push({
+          i: i,
+          x: flakeDrawnX(f, tSec),
+          y: f.y,
+          size: f.size,
+          radius: Math.max((f.size / 2) * 1.3, 18)
+        });
+      }
+      return out;
+    };
+    window.SNOW.burstAt = function (x, y) { return burstAt(x, y); };
+    window.SNOW.burstIndex = function (i) {
+      var f = flakes[i];
+      return burstFlake(f, performance.now());
+    };
+    window.SNOW.burstCount = function () { return bursts.length; };
+  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
