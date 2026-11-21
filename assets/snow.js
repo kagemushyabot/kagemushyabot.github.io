@@ -20,12 +20,20 @@
   var introEl = null, introActive = false, introLeaving = false;
   var introPage = 0;
   var introTimers = [];
-  var onResize, onVis, onSkip, onPointer;
+  var onResize, onVis, onSkip, onPointer, onSwallow;
   var bursts = [];
   var ignoreIntroSkip = false;
   var ignoreIntroSkipTimer = 0;
   var BURST_SHARD_CAP = 80;
   var SHARD_GRAVITY = 420;
+  var HIT_RADIUS_SCALE = 1.15;
+  var HIT_RADIUS_MIN = 14;
+  var SWALLOW_MS = 600;
+  var swallowUntil = 0;
+  var swallowPointerId = null;
+  var swallowTimer = 0;
+  var swallowSeenUp = false;
+  var SWALLOW_EVENTS = ['pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'touchcancel'];
   var snowDebug = /[?&]snowdebug(?:&|=|$)/.test(location.search);
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -478,7 +486,7 @@
       if (!f.alive) continue;
       x = flakeDrawnX(f, tSec);
       y = f.y;
-      r = Math.max((f.size / 2) * 1.3, 18);
+      r = hitRadius(f);
       dx = px - x;
       dy = py - y;
       d = Math.sqrt(dx * dx + dy * dy);
@@ -496,6 +504,10 @@
     return burstFlake(f, performance.now());
   }
 
+  function hitRadius(f) {
+    return Math.max((f.size / 2) * HIT_RADIUS_SCALE, HIT_RADIUS_MIN);
+  }
+
   function markIgnoreIntroSkip() {
     ignoreIntroSkip = true;
     if (ignoreIntroSkipTimer) clearTimeout(ignoreIntroSkipTimer);
@@ -503,6 +515,49 @@
       ignoreIntroSkip = false;
       ignoreIntroSkipTimer = 0;
     }, 500);
+  }
+
+  function clearSwallow() {
+    swallowUntil = 0;
+    swallowPointerId = null;
+    swallowSeenUp = false;
+    if (swallowTimer) {
+      clearTimeout(swallowTimer);
+      swallowTimer = 0;
+    }
+  }
+
+  function armSwallow(pointerId) {
+    swallowPointerId = pointerId;
+    swallowSeenUp = false;
+    swallowUntil = performance.now() + SWALLOW_MS;
+    if (swallowTimer) clearTimeout(swallowTimer);
+    swallowTimer = setTimeout(function () {
+      swallowPointerId = null;
+      swallowUntil = 0;
+      swallowTimer = 0;
+    }, SWALLOW_MS);
+  }
+
+  function isSwallowing(e) {
+    if (swallowPointerId == null && swallowUntil <= 0) return false;
+    if (performance.now() > swallowUntil) {
+      clearSwallow();
+      return false;
+    }
+    if (e && e.pointerId != null && swallowPointerId != null && e.pointerId !== swallowPointerId) {
+      return false;
+    }
+    return true;
+  }
+
+  function swallowEvent(e) {
+    if (!isSwallowing(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    if (e.type === 'pointerup' || e.type === 'mouseup' || e.type === 'touchend') swallowSeenUp = true;
+    if (e.type === 'click') clearSwallow();
   }
 
   function pointerXY(e) {
@@ -519,9 +574,23 @@
   function onPointerDown(e) {
     if (cleaned || !canvas) return;
     if (e.pointerType === 'mouse' && e.button != null && e.button !== 0) return;
+    if (e.type === 'mousedown' && e.button != null && e.button !== 0) return;
+    if (isSwallowing(e)) {
+      if (swallowSeenUp) {
+        clearSwallow();
+      } else {
+        swallowEvent(e);
+        return;
+      }
+    }
     var pt = pointerXY(e);
     if (!pt) return;
-    if (burstAt(pt.x, pt.y)) markIgnoreIntroSkip();
+    if (!burstAt(pt.x, pt.y)) return;
+    markIgnoreIntroSkip();
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    armSwallow(e.pointerId != null ? e.pointerId : 'mouse');
   }
 
   function updateBursts(dt) {
@@ -701,10 +770,18 @@
     window.removeEventListener('resize', onResize);
     document.removeEventListener('visibilitychange', onVis);
     if (onPointer) {
-      document.removeEventListener('pointerdown', onPointer, true);
-      document.removeEventListener('mousedown', onPointer, true);
-      document.removeEventListener('touchstart', onPointer, true);
+      window.removeEventListener('pointerdown', onPointer, true);
+      window.removeEventListener('mousedown', onPointer, true);
+      window.removeEventListener('touchstart', onPointer, true);
     }
+    if (onSwallow) {
+      for (var si = 0; si < SWALLOW_EVENTS.length; si++) {
+        window.removeEventListener(SWALLOW_EVENTS[si], onSwallow, true);
+      }
+    }
+    onPointer = null;
+    onSwallow = null;
+    clearSwallow();
     if (ignoreIntroSkipTimer) {
       clearTimeout(ignoreIntroSkipTimer);
       ignoreIntroSkipTimer = 0;
@@ -940,13 +1017,18 @@
     onResize = resize;
     onVis = function () { last = performance.now(); };
     onPointer = onPointerDown;
+    onSwallow = swallowEvent;
     window.addEventListener('resize', onResize, { passive: true });
     document.addEventListener('visibilitychange', onVis);
+    var cap = { capture: true, passive: false };
     if (window.PointerEvent) {
-      document.addEventListener('pointerdown', onPointer, { passive: true, capture: true });
+      window.addEventListener('pointerdown', onPointer, cap);
     } else {
-      document.addEventListener('mousedown', onPointer, { passive: true, capture: true });
-      document.addEventListener('touchstart', onPointer, { passive: true, capture: true });
+      window.addEventListener('mousedown', onPointer, cap);
+      window.addEventListener('touchstart', onPointer, cap);
+    }
+    for (var ei = 0; ei < SWALLOW_EVENTS.length; ei++) {
+      window.addEventListener(SWALLOW_EVENTS[ei], onSwallow, cap);
     }
 
     resize();
@@ -1004,7 +1086,7 @@
           x: flakeDrawnX(f, tSec),
           y: f.y,
           size: f.size,
-          radius: Math.max((f.size / 2) * 1.3, 18)
+          radius: hitRadius(f)
         });
       }
       return out;
@@ -1015,6 +1097,28 @@
       return burstFlake(f, performance.now());
     };
     window.SNOW.burstCount = function () { return bursts.length; };
+    window.SNOW.hitRadiusFor = function (size) {
+      return Math.max((size / 2) * HIT_RADIUS_SCALE, HIT_RADIUS_MIN);
+    };
+    window.SNOW.placeFlakeAt = function (x, y) {
+      var f = null, i, tSec, best = -1;
+      for (i = 0; i < flakes.length; i++) {
+        if (!flakes[i].alive) continue;
+        if (flakes[i].size > best) {
+          best = flakes[i].size;
+          f = flakes[i];
+        }
+      }
+      if (!f) return null;
+      tSec = (last || performance.now()) / 1000;
+      f.y = y;
+      f.baseX = x - Math.sin(tSec * f.freq + f.phase) * f.amp;
+      f.drawX = x;
+      f.vy = 0;
+      f.amp = 0;
+      f.alive = true;
+      return { x: x, y: y, size: f.size, radius: hitRadius(f) };
+    };
   }
 
   if (document.readyState === 'loading') {
