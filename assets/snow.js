@@ -33,6 +33,8 @@
   var swallowPointerId = null;
   var swallowTimer = 0;
   var swallowSeenUp = false;
+  var score = 0;
+  var scoreEl = null, scoreValEl = null, scoreVisible = false;
   var SWALLOW_EVENTS = ['pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'touchcancel'];
   var snowDebug = /[?&]snowdebug(?:&|=|$)/.test(location.search);
 
@@ -467,14 +469,145 @@
     });
   }
 
+  function burstPoints(f) {
+    if (!f) return 3;
+    // Soft dots (sprite 3, ~3–7px) and small crystals (10–18) are harder to hit → 3.
+    if (f.sprite === 3 || f.size < 19) return 3;
+    // Medium crystals (20–30). The 31–35 gap is unused; treat as medium if it appears.
+    if (f.size <= 33) return 2;
+    // Large crystals (36–56)
+    return 1;
+  }
+
+  function formatScore(n) {
+    n = Math.max(0, Math.min(9999, n | 0));
+    var s = String(n);
+    while (s.length < 4) s = '0' + s;
+    return s;
+  }
+
+  function injectScoreStyle() {
+    if (document.getElementById('season-score-style')) return;
+    var style = document.createElement('style');
+    style.id = 'season-score-style';
+    style.textContent =
+      '#season-score{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:.4rem;' +
+      'font-family:var(--font-sans),"IBM Plex Sans",system-ui,sans-serif;font-size:1em;font-weight:500;' +
+      'letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted,#a8a39a);line-height:1;' +
+      'white-space:nowrap;pointer-events:none;user-select:none;opacity:0;transition:opacity .45s ease}' +
+      '#season-score.is-visible{opacity:1}' +
+      '#season-score.is-done{opacity:.55}' +
+      '#season-score svg{width:1em;height:1em;display:block;flex:none;color:#c7e3f6}' +
+      '#season-score .season-score-num{font-variant-numeric:tabular-nums lining-nums;' +
+      'font-feature-settings:"tnum" 1,"lnum" 1;' +
+      'font-family:"IBM Plex Sans",var(--font-sans),ui-monospace,Menlo,Consolas,monospace,system-ui,sans-serif;' +
+      'display:inline-block;min-width:4ch;width:4ch;text-align:right;letter-spacing:.08em;' +
+      'color:var(--text,#f2f0ec);transform-origin:50% 50%}' +
+      '#season-score.is-bump .season-score-num{animation:season-score-bump .38s ease}' +
+      '@keyframes season-score-bump{0%{transform:scale(1)}35%{transform:scale(1.22)}100%{transform:scale(1)}}' +
+      '#season-score.season-score-fixed{position:fixed;top:1.15rem;right:max(1.5rem,var(--pad,1.5rem));' +
+      'z-index:95;margin-left:0}' +
+      '.season-score-pop{position:fixed;left:0;top:0;z-index:10001;pointer-events:none;' +
+      'font-family:"IBM Plex Sans",var(--font-sans),system-ui,sans-serif;font-variant-numeric:tabular-nums;' +
+      'font-size:1.05rem;font-weight:600;letter-spacing:.06em;color:#f3fbff;' +
+      'text-shadow:0 1px 2px rgba(0,0,0,.65),0 0 10px rgba(160,210,240,.75);' +
+      'animation:season-score-pop .68s ease forwards;will-change:transform,opacity}' +
+      '@keyframes season-score-pop{0%{opacity:1;transform:translate(-50%,-50%) translateY(0)}' +
+      '40%{opacity:1;transform:translate(-50%,-50%) translateY(-12px)}' +
+      '100%{opacity:0;transform:translate(-50%,-50%) translateY(-30px)}}' +
+      '@media print{#season-score,.season-score-pop{display:none!important}}' +
+      '@media (max-width:420px){#season-score{gap:.35em}}';
+    document.head.appendChild(style);
+  }
+
+  function ensureScore() {
+    injectScoreStyle();
+    if (scoreEl && scoreEl.parentNode) return scoreEl;
+    var el = document.createElement('div');
+    el.id = 'season-score';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.setAttribute('aria-label', 'Snow burst score 0000');
+    el.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round">' +
+      '<path d="M12 2v20"/><path d="M4.05 6.5 19.95 17.5"/><path d="M4.05 17.5 19.95 6.5"/>' +
+      '<path d="M12 5.6 10.2 3.4M12 5.6l1.8-2.2"/>' +
+      '<path d="M12 18.4 10.2 20.6M12 18.4l1.8 2.2"/>' +
+      '<path d="M6.7 7.9 4.4 6.6M6.7 7.9 5.8 10.4"/>' +
+      '<path d="M17.3 16.1 19.6 17.4M17.3 16.1 18.2 13.6"/>' +
+      '<path d="M6.7 16.1 4.4 17.4M6.7 16.1 5.8 13.6"/>' +
+      '<path d="M17.3 7.9 19.6 6.6M17.3 7.9 18.2 10.4"/>' +
+      '</svg><span class="season-score-num">0000</span>';
+    var nav = document.querySelector('nav.site-nav') || document.querySelector('.site-nav');
+    var header = document.querySelector('header.site-header') || document.querySelector('.site-header');
+    if (nav) {
+      nav.appendChild(el);
+    } else if (header) {
+      header.appendChild(el);
+    } else {
+      el.classList.add('season-score-fixed');
+      (document.body || document.documentElement).appendChild(el);
+    }
+    scoreEl = el;
+    scoreValEl = el.querySelector('.season-score-num');
+    if (scoreValEl) scoreValEl.textContent = formatScore(score);
+    return el;
+  }
+
+  function revealScore() {
+    if (!scoreEl) ensureScore();
+    if (!scoreEl || scoreVisible) return;
+    scoreVisible = true;
+    requestAnimationFrame(function () {
+      if (scoreEl) scoreEl.classList.add('is-visible');
+    });
+  }
+
+  function dimScore() {
+    if (!scoreEl) return;
+    scoreEl.classList.add('is-done');
+    scoreEl.classList.remove('is-bump');
+  }
+
+  function spawnScorePop(pts, x, y) {
+    var pop = document.createElement('div');
+    pop.className = 'season-score-pop';
+    pop.textContent = '+' + pts;
+    pop.style.left = Math.round(x) + 'px';
+    pop.style.top = Math.round(y - 18) + 'px';
+    document.body.appendChild(pop);
+    setTimeout(function () {
+      if (pop && pop.parentNode) pop.parentNode.removeChild(pop);
+    }, 780);
+  }
+
+  function addScore(pts, x, y) {
+    if (!pts) return;
+    score = Math.min(9999, score + pts);
+    if (!scoreValEl) ensureScore();
+    if (scoreValEl) scoreValEl.textContent = formatScore(score);
+    if (scoreEl) {
+      scoreEl.setAttribute('aria-label', 'Snow burst score ' + formatScore(score));
+      scoreEl.classList.remove('is-bump');
+      void scoreEl.offsetWidth;
+      scoreEl.classList.add('is-bump');
+      setTimeout(function () {
+        if (scoreEl) scoreEl.classList.remove('is-bump');
+      }, 400);
+    }
+    spawnScorePop(pts, x, y);
+  }
+
   function burstFlake(f, now) {
     if (!f || !f.alive) return false;
     var tSec = (now || last || performance.now()) / 1000;
     var x = flakeDrawnX(f, tSec);
     var y = f.y;
+    var pts = burstPoints(f);
     f.alive = false;
     f.respawnAt = (now || performance.now()) + 450 + Math.random() * 400;
     spawnBurst(x, y, f.size || 16);
+    addScore(pts, x, y);
     return true;
   }
 
@@ -662,6 +795,7 @@
     if (siteClockStarted) return;
     siteClockStarted = true;
     siteElapsed = 0;
+    revealScore();
   }
 
   function tick(now) {
@@ -791,6 +925,7 @@
     ctx = null;
     flakes = [];
     bursts = [];
+    dimScore();
   }
 
   function injectFont() {
@@ -967,6 +1102,7 @@
     introLeaving = true;
     introPage = 0;
     clearIntroTimers();
+    revealScore();
     try { sessionStorage.setItem(INTRO_KEY, '1'); } catch (e) {}
     document.removeEventListener('keydown', onSkip);
 
@@ -1031,6 +1167,7 @@
       window.addEventListener(SWALLOW_EVENTS[ei], onSwallow, cap);
     }
 
+    ensureScore();
     resize();
     last = performance.now();
     raf = requestAnimationFrame(tick);
@@ -1071,7 +1208,8 @@
     isSpawning: function () { return spawning && !cleaned && !!canvas; },
     isIntro: function () { return introActive && !introLeaving; },
     isIntroLeaving: function () { return introLeaving; },
-    getIntroPage: function () { return introPage; }
+    getIntroPage: function () { return introPage; },
+    getScore: function () { return score; }
   };
 
   if (snowDebug) {
@@ -1100,7 +1238,8 @@
     window.SNOW.hitRadiusFor = function (size) {
       return Math.max((size / 2) * HIT_RADIUS_SCALE, HIT_RADIUS_MIN);
     };
-    window.SNOW.placeFlakeAt = function (x, y) {
+    window.SNOW.forceCleanup = function () { cleanupSnow(); };
+    window.SNOW.placeFlakeAt = function (x, y, kind) {
       var f = null, i, tSec, best = -1;
       for (i = 0; i < flakes.length; i++) {
         if (!flakes[i].alive) continue;
@@ -1111,13 +1250,26 @@
       }
       if (!f) return null;
       tSec = (last || performance.now()) / 1000;
-      f.y = y;
-      f.baseX = x - Math.sin(tSec * f.freq + f.phase) * f.amp;
-      f.drawX = x;
-      f.vy = 0;
+      if (kind === 'dot') {
+        f.sprite = 3;
+        f.size = 6;
+      } else if (kind === 'small') {
+        if (f.sprite === 3) f.sprite = 0;
+        f.size = 14;
+      } else if (kind === 'medium') {
+        if (f.sprite === 3) f.sprite = 1;
+        f.size = 24;
+      } else if (kind === 'large') {
+        if (f.sprite === 3) f.sprite = 2;
+        f.size = 44;
+      }
       f.amp = 0;
+      f.vy = 0;
+      f.y = y;
+      f.baseX = x;
+      f.drawX = x;
       f.alive = true;
-      return { x: x, y: y, size: f.size, radius: hitRadius(f) };
+      return { x: x, y: y, size: f.size, radius: hitRadius(f), points: burstPoints(f), sprite: f.sprite };
     };
   }
 
