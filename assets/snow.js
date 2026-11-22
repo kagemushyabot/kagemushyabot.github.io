@@ -1010,7 +1010,11 @@
       '0 0 .18em rgba(255,250,240,.38),0 0 .5em rgba(255,244,228,.18)}' +
       '#season-intro [data-intro-line]{white-space:nowrap}' +
       '#season-intro [data-intro-word]{display:inline-block;white-space:nowrap}' +
-      '#season-intro [data-intro-ch]{display:inline-block;transform-origin:50% 100%;will-change:transform}' +
+      // Padding (cancelled by equal negative margins, so layout is unchanged) gives each
+      // letter's box room for the deep descenders/swashes; WebKit clips a transformed
+      // inline-block's glyph ink to its box, which cut off the tails of y/g/p on iOS.
+      '#season-intro [data-intro-ch]{display:inline-block;padding:.15em .14em .42em;margin:-.15em -.14em -.42em;' +
+      'transform-origin:50% calc(100% - .42em);will-change:transform}' +
       '#season-intro.is-in [data-intro-ch]{animation:season-bounce var(--bounce-cycle,5000ms) linear infinite;' +
       'animation-delay:calc(var(--i) * var(--bounce-stagger,70ms) + .45s)}' +
       '@keyframes season-bounce{' +
