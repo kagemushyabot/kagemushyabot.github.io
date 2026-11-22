@@ -1,15 +1,47 @@
 /* Seasonal intro + falling snow. Overlay and canvas are created in JS so a
-   script failure never blocks the site. Snow falls during the intro; the 30s
-   fade timer starts only after the intro reveals the page. */
+   script failure never blocks the site. The intro (fireplace video, greeting,
+   music) stays until the visitor clicks/taps or presses a key; the snow only
+   falls on the website, starting when the intro is dismissed. */
 (function () {
   var FALL_MS = 30000;
   var FADE_MS = 4000;
   var DPR_CAP = 2;
-  var LINE1_FADE_MS = 700;
-  var LINE1_HOLD_MS = 2000;
-  var CROSS_MS = 800;
-  var LINE2_HOLD_MS = 2000;
   var INTRO_OUT_MS = 1000;
+  var TEXT_FADE_MS = 1800;
+  var INTRO_FONT_NAME = 'Mountains of Christmas';
+  var INTRO_FONT_URL = '/assets/fonts/MountainsofChristmas-Bold.woff2';
+  var INTRO_FONT_STACK = '"' + INTRO_FONT_NAME + '",Georgia,"Times New Roman",serif';
+  var INTRO_TEXT_Y = '31%';
+  var INTRO_TEXT_Y_MOBILE = '42%';
+  var INTRO_VIDEO_WEBM = '/assets/intro/fireplace-loop.webm';
+  var INTRO_VIDEO_MP4 = '/assets/intro/fireplace-loop.mp4';
+  var INTRO_POSTER = '/assets/intro/fireplace-poster.jpg';
+  var MUSIC_TRACKS = [
+    { id: 'wish', src: '/assets/audio/we-wish-you-a-merry-christmas-music-box.mp3', title: 'We Wish You a Merry Christmas' },
+    { id: 'deck', src: '/assets/audio/deck-the-halls-music-box.mp3', title: 'Deck the Halls' },
+    { id: 'tannenbaum', src: '/assets/audio/o-tannenbaum-music-box.mp3', title: 'O Christmas Tree' }
+  ];
+  var MUSIC_VOL = 0.15;
+  var MUSIC_FADE_IN_MS = 1500;
+  var MUSIC_FADE_OUT_MS = 2000;
+  function pickMusicTrack() {
+    var q = '';
+    try {
+      var m = location.search.match(/[?&]snowtrack=([^&]*)/);
+      q = m ? decodeURIComponent(m[1]).toLowerCase() : '';
+    } catch (err) {}
+    var i;
+    if (q) {
+      for (i = 0; i < MUSIC_TRACKS.length; i++) {
+        if (MUSIC_TRACKS[i].id === q || MUSIC_TRACKS[i].title.toLowerCase().indexOf(q) !== -1 || MUSIC_TRACKS[i].src.indexOf(q) !== -1) {
+          return MUSIC_TRACKS[i];
+        }
+      }
+    }
+    return MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];
+  }
+  var musicPick = pickMusicTrack();
+  var MUSIC_SRC = musicPick.src;
   var INTRO_KEY = 'seasonIntroSeen';
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -17,8 +49,8 @@
   var cssW = 0, cssH = 0, dpr = 1;
   var siteElapsed = 0, last = 0, spawning = true, cleaned = false;
   var siteClockStarted = false;
+  var snowStarted = false;
   var introEl = null, introActive = false, introLeaving = false;
-  var introPage = 0;
   var introTimers = [];
   var onResize, onVis, onSkip, onPointer, onSwallow;
   var bursts = [];
@@ -37,6 +69,14 @@
   var scoreEl = null, scoreValEl = null, scoreVisible = false;
   var SWALLOW_EVENTS = ['pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'touchcancel'];
   var snowDebug = /[?&]snowdebug(?:&|=|$)/.test(location.search);
+  var audioEl = null;
+  var musicMuted = false;
+  var musicBlocked = false;
+  var musicStopping = false;
+  var volRaf = 0;
+  var musicToggleBtn = null;
+  var introVideo = null;
+  var introHint = null;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
@@ -685,6 +725,7 @@
   }
 
   function swallowEvent(e) {
+    if (isMusicToggleEvent(e)) return;
     if (!isSwallowing(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -705,6 +746,7 @@
   }
 
   function onPointerDown(e) {
+    if (isMusicToggleEvent(e)) return;
     if (cleaned || !canvas) return;
     if (e.pointerType === 'mouse' && e.button != null && e.button !== 0) return;
     if (e.type === 'mousedown' && e.button != null && e.button !== 0) return;
@@ -933,178 +975,305 @@
     var style = document.createElement('style');
     style.id = 'season-intro-font';
     style.textContent =
-      '@font-face{font-family:"Yeseva One";src:url("/assets/fonts/YesevaOne-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap;}' +
-      '@media print{#season-intro,canvas[data-season-snow]{display:none!important}}' +      '@media (min-width:1600px){#season-intro [data-intro-a],#season-intro [data-intro-b]{white-space:nowrap}}' +      '@media (max-width:1599px){#season-intro [data-intro-br]{display:none}}';
+      '@font-face{font-family:"' + INTRO_FONT_NAME + '";src:url("' + INTRO_FONT_URL + '") format("woff2");font-weight:700;font-style:normal;font-display:swap;}' +
+      '@media print{#season-intro,canvas[data-season-snow],#season-music-toggle{display:none!important}}' +
+      '#season-intro{position:fixed;inset:0;z-index:9990;overflow:hidden;cursor:pointer;background:#2a1408;' +
+      'opacity:1;transform:translateY(0);-webkit-tap-highlight-color:transparent}' +
+      '#season-intro [data-intro-media]{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;' +
+      'object-position:62% 50%;display:block;pointer-events:none}' +
+      '#season-intro [data-intro-shade]{position:absolute;inset:0;pointer-events:none;' +
+      'background:linear-gradient(180deg,rgba(30,10,2,.08) 0%,rgba(30,10,2,0) 30%,rgba(20,8,2,0) 75%,rgba(20,8,2,.34) 100%)}' +
+      '#season-intro [data-intro-block]{position:absolute;left:50%;top:' + INTRO_TEXT_Y + ';width:min(94vw,1560px);' +
+      'transform:translate(-50%,-50%);pointer-events:none}' +
+      '#season-intro [data-intro-title]{position:relative;margin:0;padding:0;' +
+      'font-family:' + INTRO_FONT_STACK + ';font-weight:700;' +
+      'font-size:clamp(2.6rem,5.6vw,7rem);line-height:1.08;letter-spacing:.005em;text-align:center;' +
+      'opacity:0;transform:translateY(10px);' +
+      'transition:opacity ' + TEXT_FADE_MS + 'ms ease,transform ' + TEXT_FADE_MS + 'ms ease}' +
+      '#season-intro.is-in [data-intro-title]{opacity:1;transform:translateY(0)}' +
+      '#season-intro [data-intro-layer]{display:block}' +
+      '#season-intro [data-intro-layer="base"]{color:#FFF8EE;' +
+      'text-shadow:0 0 1px rgba(96,20,10,.6),0 .04em .06em rgba(44,10,2,.55),0 .05em .34em rgba(30,8,2,.42),' +
+      '0 0 .18em rgba(255,250,240,.38),0 0 .5em rgba(255,244,228,.18)}' +
+      '#season-intro [data-intro-line]{white-space:nowrap}' +
+      '#season-intro [data-intro-line="3"]{display:block}' +
+      '#season-intro [data-intro-hint]{position:absolute;left:0;right:0;bottom:1.7rem;margin:0;padding:0 3.5rem;' +
+      'font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:.78rem;font-weight:400;' +
+      'letter-spacing:.18em;text-transform:uppercase;text-align:center;color:rgba(255,236,212,.78);' +
+      'text-shadow:0 1px 6px rgba(20,6,0,.7);pointer-events:none;opacity:0;transition:opacity 1.6s ease 1.4s}' +
+      '#season-intro.is-in [data-intro-hint]{opacity:1;animation:season-hint 3.6s ease-in-out 3s infinite}' +
+      '@keyframes season-hint{0%,100%{opacity:1}50%{opacity:.55}}' +
+      '#season-music-toggle{position:absolute;left:1rem;bottom:1.15rem;z-index:2;width:2.6rem;height:2.6rem;' +
+      'padding:0;margin:0;border:0;border-radius:50%;background:rgba(30,12,4,.28);color:rgba(255,236,212,.85);' +
+      'cursor:pointer;opacity:.8;display:flex;align-items:center;justify-content:center;pointer-events:auto;' +
+      'transition:opacity .2s ease,background .2s ease}' +
+      '#season-music-toggle:hover,#season-music-toggle:focus-visible{opacity:1;background:rgba(30,12,4,.45)}' +
+      '#season-music-toggle svg{width:1.25rem;height:1.25rem;display:block}' +
+      '@media (max-width:700px){#season-intro [data-intro-block]{top:' + INTRO_TEXT_Y_MOBILE + ';width:96vw}' +
+      '#season-intro [data-intro-title]{font-size:clamp(2.1rem,11.4vw,3.5rem);line-height:1.06}' +
+      '#season-intro [data-intro-line]{display:block}' +
+      '#season-intro [data-intro-hint]{font-size:.7rem;bottom:1.45rem}}' +
+      '@media (max-width:420px){#season-music-toggle{left:.65rem;bottom:.9rem;width:2.35rem;height:2.35rem}}' +
+      '@media (prefers-reduced-motion:reduce){#season-intro [data-intro-title],#season-intro [data-intro-hint]{transition:opacity .3s ease;transform:none;animation:none!important}}';
     document.head.appendChild(style);
   }
 
-  function styleLine(el, sizeExpr) {
-    el.style.cssText = [
-      'position:absolute',
-      'inset:0',
-      'display:flex',
-      'align-items:center',
-      'justify-content:center',
-      'margin:0',
-      'padding:0 0.5rem',
-      'opacity:0',
-      'transform:translateY(12px)',
-      'transition:none'
-    ].join(';');
-    var inner = document.createElement('div');
-    inner.setAttribute('data-intro-text', '');
-    inner.style.cssText = [
-      'width:100%',
-      'font-family:"Yeseva One",Georgia,"Times New Roman",serif',
-      'font-weight:400',
-      'font-size:' + sizeExpr,
-      'line-height:1.25',
-      'letter-spacing:0.005em',
-      'color:#E02020',
-      'text-align:center',
-      'text-wrap:balance'
-    ].join(';');
-    el.appendChild(inner);
-    return inner;
+  var ICON_SPEAKER =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4 10v4h3l5 4V6L7 10H4z"/><path d="M16 9a3.5 3.5 0 0 1 0 6"/><path d="M17.7 7a6 6 0 0 1 0 10"/></svg>';
+  var ICON_MUTED =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4 10v4h3l5 4V6L7 10H4z"/><path d="M16 9.5 21 14.5M21 9.5 16 14.5"/></svg>';
+
+  function isMusicToggleEvent(e) {
+    var t = e && e.target;
+    if (!t) return false;
+    if (t.id === 'season-music-toggle') return true;
+    return !!(t.closest && t.closest('#season-music-toggle'));
+  }
+
+  function ensureAudio() {
+    if (audioEl) return audioEl;
+    audioEl = document.createElement('audio');
+    audioEl.src = MUSIC_SRC;
+    audioEl.preload = 'auto';
+    audioEl.loop = true;
+    audioEl.setAttribute('playsinline', '');
+    audioEl.setAttribute('aria-hidden', 'true');
+    audioEl.volume = 0;
+    audioEl.style.display = 'none';
+    (document.body || document.documentElement).appendChild(audioEl);
+    return audioEl;
+  }
+
+  function isMusicPlaying() {
+    return !!(audioEl && !audioEl.paused && !audioEl.muted && !musicStopping);
+  }
+
+  function syncMusicToggle() {
+    if (!musicToggleBtn) return;
+    var showMuted = musicMuted || !isMusicPlaying();
+    musicToggleBtn.setAttribute('aria-label', showMuted ? 'Play music' : 'Mute music');
+    musicToggleBtn.setAttribute('aria-pressed', showMuted ? 'true' : 'false');
+    musicToggleBtn.innerHTML = showMuted ? ICON_MUTED : ICON_SPEAKER;
+  }
+
+  // Ramp audio volume; iOS ignores element volume, which is harmless here.
+  function rampVolume(target, ms, done) {
+    if (!audioEl) return;
+    if (volRaf) cancelAnimationFrame(volRaf);
+    var from = audioEl.volume || 0;
+    var t0 = performance.now();
+    function step(now) {
+      var k = ms > 0 ? Math.min(1, (now - t0) / ms) : 1;
+      try { audioEl.volume = clamp(from + (target - from) * k, 0, 1); } catch (err) {}
+      if (k < 1) {
+        volRaf = requestAnimationFrame(step);
+      } else {
+        volRaf = 0;
+        if (done) done();
+      }
+    }
+    volRaf = requestAnimationFrame(step);
+  }
+
+  function startMusic() {
+    if (musicMuted || musicStopping || !introActive || introLeaving) return Promise.resolve(false);
+    ensureAudio();
+    audioEl.muted = false;
+    if (!audioEl.paused) {
+      rampVolume(MUSIC_VOL, MUSIC_FADE_IN_MS);
+      syncMusicToggle();
+      return Promise.resolve(true);
+    }
+    try { audioEl.volume = 0; } catch (err) {}
+    var p;
+    try { p = audioEl.play(); } catch (err2) { p = null; }
+    if (p && p.then) {
+      return p.then(function () {
+        musicBlocked = false;
+        rampVolume(MUSIC_VOL, MUSIC_FADE_IN_MS);
+        syncMusicToggle();
+        return true;
+      }).catch(function () {
+        musicBlocked = true;
+        syncMusicToggle();
+        return false;
+      });
+    }
+    if (!audioEl.paused) rampVolume(MUSIC_VOL, MUSIC_FADE_IN_MS);
+    syncMusicToggle();
+    return Promise.resolve(!audioEl.paused);
+  }
+
+  function stopMusic(ms) {
+    if (!audioEl || musicStopping) return;
+    if (audioEl.paused) return;
+    musicStopping = true;
+    syncMusicToggle();
+    rampVolume(0, ms, function () {
+      try { audioEl.pause(); } catch (err) {}
+      musicStopping = false;
+    });
+  }
+
+  function toggleMusic() {
+    if (isMusicPlaying()) {
+      musicMuted = true;
+      rampVolume(0, 250, function () {
+        if (musicMuted && audioEl) {
+          try { audioEl.pause(); } catch (err) {}
+        }
+        syncMusicToggle();
+      });
+      syncMusicToggle();
+    } else {
+      musicMuted = false;
+      startMusic();
+    }
+  }
+
+  function buildMusicToggle(wrap) {
+    var btn = document.createElement('button');
+    btn.id = 'season-music-toggle';
+    btn.type = 'button';
+    musicToggleBtn = btn;
+    syncMusicToggle();
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMusic();
+    });
+    btn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    btn.addEventListener('touchend', function (e) { e.stopPropagation(); });
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') e.stopPropagation();
+    });
+    wrap.appendChild(btn);
+  }
+
+  function wordsHTML(text) {
+    return text.split(' ').map(function (w) { return '<span data-intro-word>' + w + '</span>'; }).join(' ');
+  }
+
+  function titleHTML() {
+    return '<span data-intro-line="1">Wishing you a</span> ' +
+      '<span data-intro-line="2">Merry Christmas</span> ' +
+      '<span data-intro-line="3">and Happy New Year</span>';
   }
 
   function buildIntro() {
     var wrap = document.createElement('div');
     wrap.id = 'season-intro';
     wrap.setAttribute('role', 'dialog');
-    wrap.setAttribute('aria-label', "Season's Greetings");
-    wrap.style.cssText = [
-      'position:fixed',
-      'inset:0',
-      'z-index:9990',
-      'display:flex',
-      'align-items:center',
-      'justify-content:center',
-      'padding:2rem 1.5rem 4rem',
-      'background:linear-gradient(180deg,#f8f4ec 0%,#efe8dc 100%)',
-      'color:#E02020',
-      'text-align:center',
-      'cursor:pointer',
-      'opacity:1',
-      'transform:translateY(0)',
-      'transition:none'
-    ].join(';');
+    wrap.setAttribute('aria-label', 'Wishing you a Merry Christmas and Happy New Year');
 
-    var stage = document.createElement('div');
-    stage.setAttribute('data-intro-stage', '');
-    stage.style.cssText = [
-      'position:relative',
-      'width:100%',
-      'max-width:100%',
-      'min-height:14rem'
-    ].join(';');
+    var media;
+    if (reduced) {
+      media = document.createElement('img');
+      media.src = INTRO_POSTER;
+      media.alt = '';
+    } else {
+      media = document.createElement('video');
+      media.muted = true;
+      media.defaultMuted = true;
+      media.loop = true;
+      media.autoplay = true;
+      media.playsInline = true;
+      media.setAttribute('muted', '');
+      media.setAttribute('loop', '');
+      media.setAttribute('autoplay', '');
+      media.setAttribute('playsinline', '');
+      media.setAttribute('preload', 'auto');
+      media.setAttribute('disablepictureinpicture', '');
+      media.poster = INTRO_POSTER;
+      var s1 = document.createElement('source');
+      s1.src = INTRO_VIDEO_WEBM;
+      s1.type = 'video/webm';
+      var s2 = document.createElement('source');
+      s2.src = INTRO_VIDEO_MP4;
+      s2.type = 'video/mp4';
+      media.appendChild(s1);
+      media.appendChild(s2);
+      introVideo = media;
+    }
+    media.setAttribute('data-intro-media', '');
+    media.setAttribute('aria-hidden', 'true');
 
-    var line1 = document.createElement('h1');
-    line1.setAttribute('data-intro-line', '1');
-    styleLine(line1, 'clamp(2.4rem,7vw,5.25rem)').textContent = "Season's Greetings";
+    var shade = document.createElement('div');
+    shade.setAttribute('data-intro-shade', '');
 
-    var line2 = document.createElement('p');
-    line2.setAttribute('data-intro-line', '2');
-    styleLine(line2, 'clamp(2.7rem,8.2vw,6.1rem)').innerHTML =
-      '<span data-intro-a>Wishing you a Merry Christmas</span> <br data-intro-br><span data-intro-b>and Happy New Year</span>';
-    line2.setAttribute('aria-hidden', 'true');
+    var title = document.createElement('h1');
+    title.setAttribute('data-intro-title', '');
+    title.innerHTML =
+      '<span data-intro-layer="base">' + titleHTML() + '</span>';
+
+    var block = document.createElement('div');
+    block.setAttribute('data-intro-block', '');
+    block.appendChild(title);
 
     var hint = document.createElement('p');
-    hint.textContent = 'Click or press any key to continue';
-    hint.style.cssText = [
-      'position:absolute',
-      'left:0',
-      'right:0',
-      'bottom:1.6rem',
-      'margin:0',
-      'font-family:"IBM Plex Sans",system-ui,sans-serif',
-      'font-size:0.75rem',
-      'letter-spacing:0.08em',
-      'color:#8a7e72'
-    ].join(';');
+    hint.setAttribute('data-intro-hint', '');
+    var touch = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    hint.textContent = touch ? 'Tap to enter' : 'Click to enter';
+    introHint = hint;
 
-    stage.appendChild(line1);
-    stage.appendChild(line2);
-    wrap.appendChild(stage);
+    wrap.appendChild(media);
+    wrap.appendChild(shade);
+    wrap.appendChild(block);
     wrap.appendChild(hint);
+    buildMusicToggle(wrap);
     document.body.appendChild(wrap);
     introEl = wrap;
     introActive = true;
-    introPage = 1;
 
-    function fadeMs(ms) {
-      return (reduced ? 80 : ms) + 'ms ease';
+    if (introVideo) {
+      try {
+        var vp = introVideo.play();
+        if (vp && vp.catch) vp.catch(function () {});
+      } catch (err) {}
     }
 
-    function showLine1() {
-      var t = fadeMs(LINE1_FADE_MS);
-      line1.style.transition = 'opacity ' + t + ',transform ' + t;
-      line1.style.opacity = '1';
-      line1.style.transform = 'translateY(0)';
+    function showText() {
+      if (introEl) introEl.classList.add('is-in');
     }
-
-    function crossToLine2() {
-      var t = fadeMs(CROSS_MS);
-      line1.style.transition = 'opacity ' + t + ',transform ' + t;
-      line2.style.transition = 'opacity ' + t + ',transform ' + t;
-      line1.style.opacity = '0';
-      line1.style.transform = 'translateY(-12px)';
-      line2.style.opacity = '1';
-      line2.style.transform = 'translateY(0)';
-      line1.setAttribute('aria-hidden', 'true');
-      line2.removeAttribute('aria-hidden');
-      wrap.setAttribute('aria-label', 'Wishing you a Merry Christmas and Happy New Year');
-    }
-
-    var started = false;
-    function startTimeline() {
-      if (started) return;
-      started = true;
-      if (reduced) showLine1();
-      else requestAnimationFrame(showLine1);
-
-      var fade1 = reduced ? 80 : LINE1_FADE_MS;
-      var hold1 = reduced ? 900 : LINE1_HOLD_MS;
-      var cross = reduced ? 160 : CROSS_MS;
-      var hold2 = reduced ? 900 : LINE2_HOLD_MS;
-
-      later(crossToLine2, fade1 + hold1);
-      later(function () { introPage = 2; }, fade1 + hold1 + cross);
-      later(dismissIntro, fade1 + hold1 + cross + hold2);
-    }
-
-    var fallback = setTimeout(startTimeline, 1200);
+    var fallback = setTimeout(showText, 900);
     introTimers.push(fallback);
     if (document.fonts && document.fonts.load) {
-      document.fonts.load('400 64px "Yeseva One"').then(function () {
+      document.fonts.load('700 64px "' + INTRO_FONT_NAME + '"').then(function () {
         clearTimeout(fallback);
-        startTimeline();
+        requestAnimationFrame(showText);
       }, function () {
         clearTimeout(fallback);
-        startTimeline();
+        showText();
       });
     }
 
+    startMusic();
+
     onSkip = function (e) {
       if (!introActive || introLeaving) return;
-      if (e && e.type === 'keydown' && e.key === 'Tab') return;
+      if (e && e.type !== 'keydown' && isMusicToggleEvent(e)) return;
+      if (e && e.type === 'keydown') {
+        if (e.key === 'Tab' || e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+        e.preventDefault();
+      }
       if (e && (e.type === 'click' || e.type === 'touchend') && ignoreIntroSkip) return;
-      if (e && e.type === 'keydown') e.preventDefault();
       dismissIntro();
     };
     wrap.addEventListener('click', onSkip);
-    wrap.addEventListener('touchend', onSkip, { passive: true });
     document.addEventListener('keydown', onSkip);
   }
 
   function dismissIntro() {
     if (!introActive || introLeaving) return;
     introLeaving = true;
-    introPage = 0;
     clearIntroTimers();
-    revealScore();
     try { sessionStorage.setItem(INTRO_KEY, '1'); } catch (e) {}
     document.removeEventListener('keydown', onSkip);
+    stopMusic(MUSIC_FADE_OUT_MS);
+    if (!reduced) startSnow();
+    revealScore();
 
     if (!introEl) {
       introActive = false;
@@ -1115,12 +1284,21 @@
 
     var ms = reduced ? 120 : INTRO_OUT_MS;
     introEl.style.cursor = 'default';
+    introEl.style.pointerEvents = 'none';
     introEl.style.transition = 'opacity ' + ms + 'ms ease, transform ' + ms + 'ms ease';
     introEl.style.opacity = '0';
     introEl.style.transform = 'translateY(-28px)';
     setTimeout(function () {
+      if (introVideo) {
+        try { introVideo.pause(); } catch (err) {}
+        introVideo.removeAttribute('src');
+        while (introVideo.firstChild) introVideo.removeChild(introVideo.firstChild);
+        try { introVideo.load(); } catch (err2) {}
+        introVideo = null;
+      }
       if (introEl && introEl.parentNode) introEl.parentNode.removeChild(introEl);
       introEl = null;
+      musicToggleBtn = null;
       introActive = false;
       introLeaving = false;
       startSiteClock();
@@ -1128,6 +1306,8 @@
   }
 
   function startSnow() {
+    if (snowStarted || cleaned) return;
+    snowStarted = true;
     canvas = document.createElement('canvas');
     canvas.setAttribute('aria-hidden', 'true');
     canvas.setAttribute('data-season-snow', '');
@@ -1192,13 +1372,17 @@
     return true;
   }
 
+
   function init() {
     injectFont();
     var showIntro = shouldShowIntro();
-    if (showIntro) buildIntro();
-    if (!reduced) {
+    if (showIntro) {
+      buildIntro();
+    } else if (!reduced) {
       startSnow();
-      if (!showIntro) startSiteClock();
+      startSiteClock();
+    } else {
+      startSiteClock();
     }
   }
 
@@ -1206,10 +1390,20 @@
     getElapsed: function () { return siteElapsed; },
     isActive: function () { return !cleaned && !!canvas; },
     isSpawning: function () { return spawning && !cleaned && !!canvas; },
+    isSnowStarted: function () { return snowStarted; },
     isIntro: function () { return introActive && !introLeaving; },
     isIntroLeaving: function () { return introLeaving; },
-    getIntroPage: function () { return introPage; },
-    getScore: function () { return score; }
+    dismissIntro: function () { dismissIntro(); },
+    getScore: function () { return score; },
+    musicVolume: function () { return audioEl ? audioEl.volume : 0; },
+    musicTargetVolume: function () { return MUSIC_VOL; },
+    isMusicPlaying: function () { return isMusicPlaying(); },
+    isMusicBlocked: function () { return musicBlocked; },
+    musicTime: function () { return audioEl ? audioEl.currentTime : 0; },
+    musicTrack: function () { return musicPick ? musicPick.id : null; },
+    musicSrc: function () { return MUSIC_SRC; },
+    musicTitle: function () { return musicPick ? musicPick.title : ''; },
+    tracks: function () { return MUSIC_TRACKS.map(function (t) { return t.id; }); }
   };
 
   if (snowDebug) {
