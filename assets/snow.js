@@ -996,7 +996,7 @@
       'transform:translate(-50%,-50%);pointer-events:none}' +
       '#season-intro [data-intro-title]{position:relative;margin:0;padding:0;' +
       'font-family:' + INTRO_FONT_STACK + ';font-weight:700;' +
-      'font-size:clamp(2.6rem,5.6vw,7rem);line-height:1.08;letter-spacing:.005em;text-align:center;' +
+      'font-size:clamp(3.05rem,6.6vw,8.25rem);line-height:1.08;letter-spacing:.005em;text-align:center;' +
       'opacity:0;transform:translateY(10px);' +
       'transition:opacity ' + TEXT_FADE_MS + 'ms ease,transform ' + TEXT_FADE_MS + 'ms ease}' +
       '#season-intro.is-in [data-intro-title]{opacity:1;transform:translateY(0)}' +
@@ -1005,6 +1005,16 @@
       'text-shadow:0 0 1px rgba(96,20,10,.6),0 .04em .06em rgba(44,10,2,.55),0 .05em .34em rgba(30,8,2,.42),' +
       '0 0 .18em rgba(255,250,240,.38),0 0 .5em rgba(255,244,228,.18)}' +
       '#season-intro [data-intro-line]{white-space:nowrap}' +
+      '#season-intro [data-intro-word]{display:inline-block;white-space:nowrap}' +
+      '#season-intro [data-intro-ch]{display:inline-block;transform-origin:50% 90%;will-change:transform}' +
+      '#season-intro.is-in [data-intro-ch]{animation:season-bounce var(--bounce-cycle,5000ms) linear infinite;' +
+      'animation-delay:calc(var(--i) * var(--bounce-stagger,70ms) + .45s)}' +
+      '@keyframes season-bounce{' +
+      '0%{transform:translateY(0) scale(1,1);animation-timing-function:cubic-bezier(.3,0,.4,1)}' +
+      '1.4%{transform:translateY(0) scale(1.04,.96);animation-timing-function:cubic-bezier(.25,.6,.45,1)}' +
+      '5.5%{transform:translateY(-.15em) scale(.98,1.03);animation-timing-function:cubic-bezier(.55,0,.75,.45)}' +
+      '9.6%{transform:translateY(0) scale(1.03,.97);animation-timing-function:ease-out}' +
+      '12%,100%{transform:translateY(0) scale(1,1)}}' +
       '#season-intro [data-intro-line="3"]{display:block}' +
       '#season-intro [data-intro-hint]{position:absolute;left:0;right:0;bottom:1.7rem;margin:0;padding:0 5.75rem;' +
       'font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:.78rem;font-weight:400;' +
@@ -1026,14 +1036,14 @@
       'transform:translateX(-50%);object-position:50% 50%;' +
       '-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);' +
       'mask-image:linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%)}' +
-      '#season-intro [data-intro-block]{width:min(94vw,1560px,166vh)}' +
-      '#season-intro [data-intro-title]{font-size:clamp(2.6rem,min(5.6vw,9.95vh),7rem)}}' +
+      '#season-intro [data-intro-block]{width:min(96vw,1800px,170vh)}' +
+      '#season-intro [data-intro-title]{font-size:clamp(3.05rem,min(6.6vw,11.7vh),8.25rem)}}' +
       '@media (max-width:700px){#season-intro [data-intro-block]{top:' + INTRO_TEXT_Y_MOBILE + ';width:96vw}' +
-      '#season-intro [data-intro-title]{font-size:clamp(2.1rem,11.4vw,3.5rem);line-height:1.06}' +
+      '#season-intro [data-intro-title]{font-size:clamp(2.4rem,12.8vw,3.95rem);line-height:1.06;letter-spacing:-.012em}' +
       '#season-intro [data-intro-line]{display:block}' +
       '#season-intro [data-intro-hint]{font-size:.7rem;bottom:1.45rem}}' +
       '@media (max-width:420px){#season-music-toggle{left:.9rem;bottom:1rem;width:3.5rem;height:3.5rem}#season-music-toggle svg{width:2.25rem;height:2.25rem}#season-intro [data-intro-hint]{padding:0 4.75rem}}' +
-      '@media (prefers-reduced-motion:reduce){#season-intro [data-intro-title],#season-intro [data-intro-hint]{transition:opacity .3s ease;transform:none;animation:none!important}}';
+      '@media (prefers-reduced-motion:reduce){#season-intro [data-intro-title],#season-intro [data-intro-hint],#season-intro [data-intro-ch]{transition:opacity .3s ease;transform:none;animation:none!important}}';
     document.head.appendChild(style);
   }
 
@@ -1190,10 +1200,24 @@
     return text.split(' ').map(function (w) { return '<span data-intro-word>' + w + '</span>'; }).join(' ');
   }
 
+  // Per-letter spans for the looping bounce wave. Words stay unbroken
+  // (each word is an inline-block nowrap span), so line breaks only happen at spaces.
+  var BOUNCE_STAGGER_MS = 70;
+  var bounceIndex = 0;
+  function lettersHTML(text) {
+    return text.split(' ').map(function (w) {
+      var out = '';
+      for (var i = 0; i < w.length; i++) {
+        out += '<span data-intro-ch style="--i:' + (bounceIndex++) + '">' + w.charAt(i) + '</span>';
+      }
+      return '<span data-intro-word>' + out + '</span>';
+    }).join(' ');
+  }
   function titleHTML() {
-    return '<span data-intro-line="1">Wishing you a</span> ' +
-      '<span data-intro-line="2">Merry Christmas</span> ' +
-      '<span data-intro-line="3">and Happy New Year</span>';
+    bounceIndex = 0;
+    return '<span data-intro-line="1">' + lettersHTML('Wishing you a') + '</span> ' +
+      '<span data-intro-line="2">' + lettersHTML('Merry Christmas') + '</span> ' +
+      '<span data-intro-line="3">' + lettersHTML('and Happy New Year') + '</span>';
   }
 
   function buildIntro() {
@@ -1227,8 +1251,11 @@
       var s2 = document.createElement('source');
       s2.src = INTRO_VIDEO_MP4;
       s2.type = 'video/mp4';
-      media.appendChild(s1);
-      media.appendChild(s2);
+      // MP4 (H.264) first: every mobile browser decodes it in hardware. Safari on
+      // iOS/iPadOS may otherwise pick the WebM (VP9) and stall. WebM stays as a fallback.
+      // ?introvideo=webm forces the WebM first (testing the watchdog fallback only).
+      if (/[?&]introvideo=webm\b/.test(location.search)) { media.appendChild(s1); media.appendChild(s2); }
+      else { media.appendChild(s2); media.appendChild(s1); }
       introVideo = media;
     }
     media.setAttribute('data-intro-media', '');
@@ -1239,8 +1266,13 @@
 
     var title = document.createElement('h1');
     title.setAttribute('data-intro-title', '');
+    title.setAttribute('aria-label', 'Wishing you a Merry Christmas and Happy New Year');
     title.innerHTML =
-      '<span data-intro-layer="base">' + titleHTML() + '</span>';
+      '<span data-intro-layer="base" aria-hidden="true">' + titleHTML() + '</span>';
+    // One bounce cycle = the wave across all letters + a short hop + a ~1.7 s pause.
+    var bounceCycle = bounceIndex * BOUNCE_STAGGER_MS + 600 + 1700;
+    title.style.setProperty('--bounce-cycle', bounceCycle + 'ms');
+    title.style.setProperty('--bounce-stagger', BOUNCE_STAGGER_MS + 'ms');
 
     var block = document.createElement('div');
     block.setAttribute('data-intro-block', '');
@@ -1266,10 +1298,8 @@
     introActive = true;
 
     if (introVideo) {
-      try {
-        var vp = introVideo.play();
-        if (vp && vp.catch) vp.catch(function () {});
-      } catch (err) {}
+      kickIntroVideo();
+      keepIntroVideoPlaying(introVideo, wrap);
     }
 
     function showText() {
@@ -1303,6 +1333,64 @@
     document.addEventListener('keydown', onSkip);
   }
 
+  // ---- intro video keep-alive (mobile: autoplay refusal, Low Power Mode, loop stalls) ----
+  var introWatchdog = 0;
+  function kickIntroVideo() {
+    var v = introVideo;
+    if (!v || !introActive) return;
+    try {
+      var vp = v.play();
+      if (vp && vp.catch) vp.catch(function () {});
+    } catch (err) {}
+  }
+  function keepIntroVideoPlaying(v, wrap) {
+    var lastT = -1, stuck = 0, reloads = 0;
+    function live() { return introVideo === v && introActive && !introLeaving; }
+    // Manual loop fallback in case the native loop does not restart.
+    v.addEventListener('ended', function () {
+      if (!live()) return;
+      try { v.currentTime = 0; } catch (err) {}
+      kickIntroVideo();
+    });
+    // Resume if the browser pauses it (power saving, interruption, tab switch).
+    v.addEventListener('pause', function () {
+      if (!live() || document.hidden) return;
+      setTimeout(function () { if (live() && v.paused && !document.hidden) kickIntroVideo(); }, 250);
+    });
+    v.addEventListener('stalled', function () { if (live()) kickIntroVideo(); });
+    document.addEventListener('visibilitychange', function () {
+      if (live() && !document.hidden) kickIntroVideo();
+    });
+    // A touch is a user gesture: lets play() succeed where autoplay was refused.
+    wrap.addEventListener('touchstart', function () { if (live()) kickIntroVideo(); }, { passive: true, capture: true });
+    wrap.addEventListener('pointerdown', function () { if (live()) kickIntroVideo(); }, { passive: true, capture: true });
+    // Watchdog: playback must advance while the intro is visible. WebKit can freeze on
+    // the loop seek (time stuck, not paused); re-seek, then reload, preferring the MP4.
+    if (introWatchdog) clearInterval(introWatchdog);
+    introWatchdog = setInterval(function () {
+      if (!live()) { clearInterval(introWatchdog); introWatchdog = 0; return; }
+      if (document.hidden) { lastT = -1; stuck = 0; return; }
+      var t = v.currentTime;
+      if (v.paused || v.ended || t === lastT) {
+        stuck++;
+        if (v.ended || (v.duration && t >= v.duration - 0.1) || stuck === 2) {
+          try { v.currentTime = 0; } catch (err) {}
+        }
+        if (stuck >= 3 && reloads < 3) {
+          reloads++;
+          stuck = 0;
+          var webm = v.querySelector('source[type="video/webm"]');
+          if (webm && /\.webm(\?|$)/.test(v.currentSrc || '')) v.removeChild(webm);
+          try { v.load(); } catch (err2) {}
+        }
+        kickIntroVideo();
+      } else {
+        stuck = 0;
+      }
+      lastT = t;
+    }, 1500);
+  }
+
   function dismissIntro() {
     if (!introActive || introLeaving) return;
     introLeaving = true;
@@ -1328,6 +1416,7 @@
     introEl.style.opacity = '0';
     introEl.style.transform = 'translateY(-28px)';
     setTimeout(function () {
+      if (introWatchdog) { clearInterval(introWatchdog); introWatchdog = 0; }
       if (introVideo) {
         try { introVideo.pause(); } catch (err) {}
         introVideo.removeAttribute('src');
