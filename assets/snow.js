@@ -23,7 +23,8 @@
   ];
   var MUSIC_VOL = 0.15;
   var MUSIC_FADE_IN_MS = 1500;
-  var MUSIC_FADE_OUT_MS = 2000;
+  var MUSIC_FADE_OUT_MS = 3000;
+  var MUSIC_HOLD_AFTER_ENTER_MS = 5000;
   function pickMusicTrack() {
     var q = '';
     try {
@@ -997,23 +998,33 @@
       '0 0 .18em rgba(255,250,240,.38),0 0 .5em rgba(255,244,228,.18)}' +
       '#season-intro [data-intro-line]{white-space:nowrap}' +
       '#season-intro [data-intro-line="3"]{display:block}' +
-      '#season-intro [data-intro-hint]{position:absolute;left:0;right:0;bottom:1.7rem;margin:0;padding:0 3.5rem;' +
+      '#season-intro [data-intro-hint]{position:absolute;left:0;right:0;bottom:1.7rem;margin:0;padding:0 5.75rem;' +
       'font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:.78rem;font-weight:400;' +
       'letter-spacing:.18em;text-transform:uppercase;text-align:center;color:rgba(255,236,212,.78);' +
       'text-shadow:0 1px 6px rgba(20,6,0,.7);pointer-events:none;opacity:0;transition:opacity 1.6s ease 1.4s}' +
       '#season-intro.is-in [data-intro-hint]{opacity:1;animation:season-hint 3.6s ease-in-out 3s infinite}' +
       '@keyframes season-hint{0%,100%{opacity:1}50%{opacity:.55}}' +
-      '#season-music-toggle{position:absolute;left:1rem;bottom:1.15rem;z-index:2;width:2.6rem;height:2.6rem;' +
-      'padding:0;margin:0;border:0;border-radius:50%;background:rgba(30,12,4,.28);color:rgba(255,236,212,.85);' +
-      'cursor:pointer;opacity:.8;display:flex;align-items:center;justify-content:center;pointer-events:auto;' +
+      '#season-music-toggle{position:absolute;left:1.4rem;bottom:1.4rem;z-index:2;width:4.2rem;height:4.2rem;' +
+      'padding:0;margin:0;border:0;border-radius:50%;background:rgba(30,12,4,.5);color:rgba(255,236,212,.95);box-shadow:0 0 0 1.5px rgba(255,236,212,.35),0 2px 10px rgba(0,0,0,.35);' +
+      'cursor:pointer;opacity:.9;display:flex;align-items:center;justify-content:center;pointer-events:auto;' +
       'transition:opacity .2s ease,background .2s ease}' +
-      '#season-music-toggle:hover,#season-music-toggle:focus-visible{opacity:1;background:rgba(30,12,4,.45)}' +
-      '#season-music-toggle svg{width:1.25rem;height:1.25rem;display:block}' +
+      '#season-music-toggle:hover,#season-music-toggle:focus-visible{opacity:1;background:rgba(30,12,4,.65)}' +
+      '#season-music-toggle svg{width:2.7rem;height:2.7rem;display:block}' +
+      '#season-intro [data-intro-fill]{display:none}' +
+      '@media (min-width:821px){' +
+      '#season-intro [data-intro-fill]{display:block;position:absolute;inset:-60px;pointer-events:none;' +
+      'background:#2a1408 url("' + INTRO_POSTER + '") center/cover no-repeat;filter:blur(30px) brightness(.48) saturate(1.1)}' +
+      '#season-intro [data-intro-media]{left:50%;right:auto;width:auto;height:100%;aspect-ratio:16/9;max-width:none;' +
+      'transform:translateX(-50%);object-position:50% 50%;' +
+      '-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);' +
+      'mask-image:linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%)}' +
+      '#season-intro [data-intro-block]{width:min(94vw,1560px,166vh)}' +
+      '#season-intro [data-intro-title]{font-size:clamp(2.6rem,min(5.6vw,9.95vh),7rem)}}' +
       '@media (max-width:700px){#season-intro [data-intro-block]{top:' + INTRO_TEXT_Y_MOBILE + ';width:96vw}' +
       '#season-intro [data-intro-title]{font-size:clamp(2.1rem,11.4vw,3.5rem);line-height:1.06}' +
       '#season-intro [data-intro-line]{display:block}' +
       '#season-intro [data-intro-hint]{font-size:.7rem;bottom:1.45rem}}' +
-      '@media (max-width:420px){#season-music-toggle{left:.65rem;bottom:.9rem;width:2.35rem;height:2.35rem}}' +
+      '@media (max-width:420px){#season-music-toggle{left:.9rem;bottom:1rem;width:3.5rem;height:3.5rem}#season-music-toggle svg{width:2.25rem;height:2.25rem}#season-intro [data-intro-hint]{padding:0 4.75rem}}' +
       '@media (prefers-reduced-motion:reduce){#season-intro [data-intro-title],#season-intro [data-intro-hint]{transition:opacity .3s ease;transform:none;animation:none!important}}';
     document.head.appendChild(style);
   }
@@ -1037,13 +1048,28 @@
     audioEl = document.createElement('audio');
     audioEl.src = MUSIC_SRC;
     audioEl.preload = 'auto';
-    audioEl.loop = true;
+    audioEl.loop = false;
+    audioEl.addEventListener('ended', playNextTrack);
     audioEl.setAttribute('playsinline', '');
     audioEl.setAttribute('aria-hidden', 'true');
     audioEl.volume = 0;
     audioEl.style.display = 'none';
     (document.body || document.documentElement).appendChild(audioEl);
     return audioEl;
+  }
+
+  // When a track ends, continue with a different random track.
+  function playNextTrack() {
+    if (!audioEl || musicMuted) return;
+    var choices = MUSIC_TRACKS.filter(function (t) { return t.src !== musicPick.src; });
+    if (!choices.length) choices = MUSIC_TRACKS;
+    musicPick = choices[Math.floor(Math.random() * choices.length)];
+    MUSIC_SRC = musicPick.src;
+    audioEl.src = MUSIC_SRC;
+    var p;
+    try { p = audioEl.play(); } catch (err) { p = null; }
+    if (p && p.catch) p.catch(function () {});
+    syncMusicToggle();
   }
 
   function isMusicPlaying() {
@@ -1218,6 +1244,10 @@
     hint.textContent = touch ? 'Tap to enter' : 'Click to enter';
     introHint = hint;
 
+    var fill = document.createElement('div');
+    fill.setAttribute('data-intro-fill', '');
+    fill.setAttribute('aria-hidden', 'true');
+    wrap.appendChild(fill);
     wrap.appendChild(media);
     wrap.appendChild(shade);
     wrap.appendChild(block);
@@ -1271,7 +1301,8 @@
     clearIntroTimers();
     try { sessionStorage.setItem(INTRO_KEY, '1'); } catch (e) {}
     document.removeEventListener('keydown', onSkip);
-    stopMusic(MUSIC_FADE_OUT_MS);
+    // Keep the music at full volume for a few seconds on the site, then fade out.
+    setTimeout(function () { stopMusic(MUSIC_FADE_OUT_MS); }, MUSIC_HOLD_AFTER_ENTER_MS);
     if (!reduced) startSnow();
     revealScore();
 
