@@ -74,6 +74,12 @@
   var musicMuted = false;
   var musicBlocked = false;
   var musicStopping = false;
+  var reelPlayed = false;
+  // Start the snow fade-out as soon as the main page's top reel video plays.
+  document.addEventListener('play', function (e) {
+    var v = e.target;
+    if (v && v.closest && v.closest('[data-reel]')) reelPlayed = true;
+  }, true);
   var volRaf = 0;
   var musicToggleBtn = null;
   var introVideo = null;
@@ -855,6 +861,8 @@
 
     if (siteClockStarted) {
       siteElapsed += dt * 1000;
+      // The top reel video started playing: jump straight to the fade-out.
+      if (reelPlayed && siteElapsed < FALL_MS) siteElapsed = FALL_MS;
       if (siteElapsed >= FALL_MS + FADE_MS) {
         cleanupSnow();
         return;
@@ -1426,6 +1434,7 @@
     isIntroLeaving: function () { return introLeaving; },
     dismissIntro: function () { dismissIntro(); },
     getScore: function () { return score; },
+    reelPlayed: function () { return reelPlayed; },
     musicVolume: function () { return audioEl ? audioEl.volume : 0; },
     musicTargetVolume: function () { return MUSIC_VOL; },
     isMusicPlaying: function () { return isMusicPlaying(); },
