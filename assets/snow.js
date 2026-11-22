@@ -996,25 +996,29 @@
       'transform:translate(-50%,-50%);pointer-events:none}' +
       '#season-intro [data-intro-title]{position:relative;margin:0;padding:0;' +
       'font-family:' + INTRO_FONT_STACK + ';font-weight:700;' +
-      'font-size:clamp(3.05rem,6.6vw,8.25rem);line-height:1.08;letter-spacing:.005em;text-align:center;' +
+      'font-size:clamp(3.05rem,6.6vw,8.25rem);line-height:1.24;letter-spacing:.012em;font-kerning:normal;text-align:center;' +
       'opacity:0;transform:translateY(10px);' +
       'transition:opacity ' + TEXT_FADE_MS + 'ms ease,transform ' + TEXT_FADE_MS + 'ms ease}' +
       '#season-intro.is-in [data-intro-title]{opacity:1;transform:translateY(0)}' +
       '#season-intro [data-intro-layer]{display:block}' +
-      '#season-intro [data-intro-layer="base"]{color:#FFF8EE;' +
+      // Two stacked copies: all shadows/glow underneath, all letter fills on top, so a
+      // bouncing letter's shadow can never paint over its neighbour's glyph.
+      '#season-intro [data-intro-layer="shade"]{position:absolute;left:0;top:0;width:100%;color:transparent}' +
+      '#season-intro [data-intro-layer="base"]{position:relative;color:#FFF8EE;text-shadow:none!important}' +
+      '#season-intro [data-intro-layer="shade"]{color:transparent;' +
       'text-shadow:0 0 1px rgba(96,20,10,.6),0 .04em .06em rgba(44,10,2,.55),0 .05em .34em rgba(30,8,2,.42),' +
       '0 0 .18em rgba(255,250,240,.38),0 0 .5em rgba(255,244,228,.18)}' +
       '#season-intro [data-intro-line]{white-space:nowrap}' +
       '#season-intro [data-intro-word]{display:inline-block;white-space:nowrap}' +
-      '#season-intro [data-intro-ch]{display:inline-block;transform-origin:50% 90%;will-change:transform}' +
+      '#season-intro [data-intro-ch]{display:inline-block;transform-origin:50% 100%;will-change:transform}' +
       '#season-intro.is-in [data-intro-ch]{animation:season-bounce var(--bounce-cycle,5000ms) linear infinite;' +
       'animation-delay:calc(var(--i) * var(--bounce-stagger,70ms) + .45s)}' +
       '@keyframes season-bounce{' +
-      '0%{transform:translateY(0) scale(1,1);animation-timing-function:cubic-bezier(.3,0,.4,1)}' +
-      '1.4%{transform:translateY(0) scale(1.04,.96);animation-timing-function:cubic-bezier(.25,.6,.45,1)}' +
-      '5.5%{transform:translateY(-.15em) scale(.98,1.03);animation-timing-function:cubic-bezier(.55,0,.75,.45)}' +
-      '9.6%{transform:translateY(0) scale(1.03,.97);animation-timing-function:ease-out}' +
-      '12%,100%{transform:translateY(0) scale(1,1)}}' +
+      '0%{transform:translateY(0) scaleY(1);animation-timing-function:cubic-bezier(.3,0,.4,1)}' +
+      '1.4%{transform:translateY(0) scaleY(.95);animation-timing-function:cubic-bezier(.25,.6,.45,1)}' +
+      '5.5%{transform:translateY(-.11em) scaleY(1.03);animation-timing-function:cubic-bezier(.55,0,.75,.45)}' +
+      '9.6%{transform:translateY(0) scaleY(.97);animation-timing-function:ease-out}' +
+      '12%,100%{transform:translateY(0) scaleY(1)}}' +
       '#season-intro [data-intro-line="3"]{display:block}' +
       '#season-intro [data-intro-hint]{position:absolute;left:0;right:0;bottom:1.7rem;margin:0;padding:0 5.75rem;' +
       'font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:.78rem;font-weight:400;' +
@@ -1039,7 +1043,7 @@
       '#season-intro [data-intro-block]{width:min(96vw,1800px,170vh)}' +
       '#season-intro [data-intro-title]{font-size:clamp(3.05rem,min(6.6vw,11.7vh),8.25rem)}}' +
       '@media (max-width:700px){#season-intro [data-intro-block]{top:' + INTRO_TEXT_Y_MOBILE + ';width:96vw}' +
-      '#season-intro [data-intro-title]{font-size:clamp(2.4rem,12.8vw,3.95rem);line-height:1.06;letter-spacing:-.012em}' +
+      '#season-intro [data-intro-title]{font-size:clamp(2.2rem,11.8vw,3.7rem);line-height:1.26;letter-spacing:.006em}' +
       '#season-intro [data-intro-line]{display:block}' +
       '#season-intro [data-intro-hint]{font-size:.7rem;bottom:1.45rem}}' +
       '@media (max-width:420px){#season-music-toggle{left:.9rem;bottom:1rem;width:3.5rem;height:3.5rem}#season-music-toggle svg{width:2.25rem;height:2.25rem}#season-intro [data-intro-hint]{padding:0 4.75rem}}' +
@@ -1268,6 +1272,7 @@
     title.setAttribute('data-intro-title', '');
     title.setAttribute('aria-label', 'Wishing you a Merry Christmas and Happy New Year');
     title.innerHTML =
+      '<span data-intro-layer="shade" aria-hidden="true">' + titleHTML() + '</span>' +
       '<span data-intro-layer="base" aria-hidden="true">' + titleHTML() + '</span>';
     // One bounce cycle = the wave across all letters + a short hop + a ~1.7 s pause.
     var bounceCycle = bounceIndex * BOUNCE_STAGGER_MS + 600 + 1700;
